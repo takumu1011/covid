@@ -1,35 +1,35 @@
-var gulp = require('gulp');
-var sass = require('gulp-sass'); //Sassコンパイル
-var plumber = require('gulp-plumber'); //エラー時の強制終了を防止
-var notify = require('gulp-notify'); //エラー発生時にデスクトップ通知する
-var sassGlob = require('gulp-sass-glob'); //@importの記述を簡潔にする
-var browserSync = require( 'browser-sync' ); //ブラウザ反映
-var postcss = require('gulp-postcss'); //autoprefixerとセット
-var autoprefixer = require('autoprefixer'); //ベンダープレフィックス付与
-var cssdeclsort = require('css-declaration-sorter'); //cssソート
-var babel = require('gulp-babel'); //babel
+const {src, dest, watch, series, parallel} = require('gulp');
+const loadPlugins = require('gulp-load-plugins');
+const $ = loadPlugins();
+const browserSync = require( 'browser-sync' );
+const postcss = require('gulp-postcss');
+const autoprefixer = require('autoprefixer');
+const cssdeclsort = require('css-declaration-sorter');
 
-// sass
-gulp.task('sass', function() {
-    return gulp
-    .src( 'src/assets/css/*.scss' )
-    .pipe( plumber({ errorHandler: notify.onError("Error: <%= error.message %>") }) ) //error check
-    .pipe( sassGlob() )
-    .pipe( sass({
-        outputStyle: 'expanded' //expanded, nested, campact, compressed
-    }) )
-    .pipe( postcss([ autoprefixer(
-        {
-            browsers: ["last 2 versions", "ie >= 11", "Android >= 4"], // ☆IEは11以上、Androidは4.4以上 その他は最新2バージョンで必要なベンダープレフィックスを付与する設定
-            cascade: false 
-        }
-        )]))
-    .pipe( postcss([ cssdeclsort({ order: 'smacss' }) ]) ) //sort(smacss順)
-    .pipe(gulp.dest('src/assets/css'));
-});
-
-// browser-sync
-gulp.task( 'browser-sync', function(done) {
+//compSass
+function compSass() {
+    return src('src/assets/css/*.scss')
+        .pipe($.plumber({errorHandler: $.notify.onError("Error: <%= error.message %>")}))
+        .pipe($.sassGlob())
+        .pipe($.sass({outputStyle: 'expanded'}))
+        .pipe(postcss([autoprefixer({
+            browsers: ["last 2 versions", "ie >= 11", "Android >= 4"],
+            cascade: false
+        })]))
+        .pipe(postcss([cssdeclsort({order: 'smacss'})]))
+        .pipe(dest('src/assets/css/'));
+}
+//babel
+function babel() {
+    return src('src/assets/js/main.js')
+    .pipe($.babel({
+        presets: ['@babel/preset-env']
+    }))
+    .pipe($.rename('script.js'))
+    .pipe(dest('src/assets/js/'));
+}
+// serve
+function serve(done) {
     browserSync.init({
         server: {
             baseDir: "src",
@@ -37,48 +37,42 @@ gulp.task( 'browser-sync', function(done) {
         }
     });
     done();
-});
-
-//bs-reload
-gulp.task( 'bs-reload', function(done) {
+}
+//reload
+function reload(done) {
     browserSync.reload();
     done();
-});
-
-// watch
-gulp.task( 'watch', function(done) {
-    gulp.watch( 'src/assets/css/*.scss', gulp.series('sass', 'bs-reload') ); 
-    gulp.watch('src/assets/js/*.js', gulp.task('bs-reload')); 
-    gulp.watch('src/*.html', gulp.task('bs-reload')); 
-});
-
-// default
-gulp.task('default', gulp.parallel('browser-sync', 'watch'));
-
+}
+// watching
+function watching(done) {
+    watch('src/assets/css/*.scss', series(compSass, reload));
+    watch('src/assets/js/main.js', series(babel, reload));
+    watch('src/*.html', reload);
+}
 //release
-gulp.task('release', function(done) {
-    gulp.src([
-        'src/index.html'
-    ])
-    .pipe(gulp.dest('dist/'));
-    
-    gulp.src([
+function release(done) {
+    src('src/index.html')
+    .pipe(dest('dist/'));
+
+    src([
         'src/assets/css/style.css',
         'src/assets/css/default.css'
     ])
-    .pipe(gulp.dest('dist/assets/css/'));
-    
-    gulp.src([
-        'src/assets/js/script.js'
-    ])
-    .pipe(babel({
-        presets: ['@babel/preset-env']
-    }))
-    .pipe(gulp.dest('dist/assets/js/'));
-    
-    gulp.src([
-        'src/assets/img/**'
-    ])
-    .pipe(gulp.dest('dist/assets/img/'));
+    .pipe(dest('dist/assets/css/'));
+
+    src('src/assets/js/script.js')
+    .pipe(dest('dist/assets/js/'));
+
+    src('src/assets/img/**')
+    .pipe($.imagemin())
+    .pipe(dest('dist/assets/img/'));
     done();
-});
+}
+
+exports.sass = compSass;
+exports.babel = babel;
+exports.serve = serve;
+exports.reload = reload;
+exports.watching = watching;
+exports.default = parallel(watching , serve);
+exports.release = release;
